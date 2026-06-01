@@ -131,8 +131,3 @@ export default async (request) => {
     return jsonResponse(400, { success: false, error: error.message || String(error) });
   }
 };
-
-export const config = {
-  path: "/api/convert",
-  method: ["POST"],
-};
