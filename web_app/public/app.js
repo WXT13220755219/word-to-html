@@ -75,6 +75,17 @@ function downloadHtml(filename, html) {
   URL.revokeObjectURL(url);
 }
 
+function downloadFromUrl(url, filename) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  if (filename) {
+    anchor.download = filename;
+  }
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 async function readJsonResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
@@ -157,7 +168,11 @@ async function convert() {
     const result = startResult.jobId ? await waitForJob(startResult.jobId) : startResult;
 
     setProgress("准备下载...", 95);
-    downloadHtml(result.filename, result.html);
+    if (result.downloadUrl) {
+      downloadFromUrl(result.downloadUrl, result.filename);
+    } else {
+      downloadHtml(result.filename, result.html);
+    }
     setProgress("下载已开始", 100);
     setMessage(`已生成 ${result.filename}`);
   } catch (error) {

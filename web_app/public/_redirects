@@ -1,2 +1,3 @@
+/api/convert/download  /.netlify/functions/convert-download  200!
 /api/convert/status  /.netlify/functions/convert-status  200!
 /api/convert  /.netlify/functions/convert-start  200!
