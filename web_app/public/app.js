@@ -75,6 +75,48 @@ function downloadHtml(filename, html) {
   URL.revokeObjectURL(url);
 }
 
+async function readJsonResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    throw new Error(`转换接口返回 HTTP ${response.status}，不是 JSON：${text.slice(0, 120)}`);
+  }
+
+  return response.json();
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForJob(jobId) {
+  const startedAt = Date.now();
+  const timeoutMs = 10 * 60 * 1000;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await wait(3000);
+    const response = await fetch(`/api/convert/status?id=${encodeURIComponent(jobId)}`, {
+      headers: { accept: "application/json" },
+    });
+    const result = await readJsonResponse(response);
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "查询转换状态失败");
+    }
+    if (result.status === "done") {
+      return result;
+    }
+    if (result.status === "error") {
+      throw new Error(result.error || "转换失败");
+    }
+
+    const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+    setProgress(`正在转换，已等待 ${elapsedSeconds} 秒...`, Math.min(90, 50 + elapsedSeconds / 6));
+  }
+
+  throw new Error("转换等待超时，请稍后重试或缩短文档内容");
+}
+
 async function convert() {
   if (!selectedFile) {
     setMessage("请先选择一个 Word 文件。", true);
@@ -99,17 +141,13 @@ async function convert() {
       }),
     });
 
-    setProgress("生成 HTML...", 75);
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      const text = await response.text();
-      throw new Error(`转换接口返回 HTTP ${response.status}，不是 JSON：${text.slice(0, 120)}`);
+    const startResult = await readJsonResponse(response);
+    if (!response.ok || !startResult.success) {
+      throw new Error(startResult.error || "转换任务启动失败");
     }
 
-    const result = await response.json();
-    if (!response.ok || !result.success) {
-      throw new Error(result.error || "转换失败");
-    }
+    setProgress("生成 HTML...", 55);
+    const result = startResult.jobId ? await waitForJob(startResult.jobId) : startResult;
 
     setProgress("准备下载...", 95);
     downloadHtml(result.filename, result.html);

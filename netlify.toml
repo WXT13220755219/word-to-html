@@ -10,6 +10,11 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api/convert/status"
+  to = "/.netlify/functions/convert-status"
+  status = 200
+
+[[redirects]]
   from = "/api/convert"
-  to = "/.netlify/functions/convert"
+  to = "/.netlify/functions/convert-start"
   status = 200
