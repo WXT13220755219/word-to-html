@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pyc.*
+.env
+web_app/.env
+密钥.txt

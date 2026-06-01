@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Word 转精排 HTML</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="tool">
+      <div class="heading">
+        <div class="mark" aria-hidden="true">W</div>
+        <div>
+          <h1>Word 转精排 HTML</h1>
+          <p>上传未排版的 .docx，转换完成后自动下载单文件 HTML。</p>
+        </div>
+      </div>
+
+      <form id="convertForm" class="panel">
+        <label class="dropzone" id="dropzone">
+          <input id="fileInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          <span class="drop-icon" aria-hidden="true">+</span>
+          <span class="drop-title">选择 Word 文件</span>
+          <span class="drop-meta" id="fileMeta">支持 .docx，建议小于 25MB</span>
+        </label>
+
+        <div class="actions">
+          <button id="convertButton" type="submit">
+            <span class="button-icon" aria-hidden="true">↓</span>
+            转换并下载
+          </button>
+          <button id="clearButton" type="button" class="secondary">清空</button>
+        </div>
+
+        <div class="progress" id="progress" hidden>
+          <div class="bar"><span id="barFill"></span></div>
+          <p id="statusText">准备上传...</p>
+        </div>
+      </form>
+
+      <p class="message" id="message" role="status"></p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
