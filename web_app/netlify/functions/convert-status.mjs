@@ -28,5 +28,14 @@ export default async (request) => {
     return jsonResponse(404, { success: false, error: "任务不存在或已过期" });
   }
 
-  return jsonResponse(200, { success: true, ...job });
+  return jsonResponse(200, {
+    success: true,
+    status: job.status || "queued",
+    filename: job.filename || "document.html",
+    error: job.error || "",
+    downloadUrl: job.downloadUrl || (job.status === "done" ? `/.netlify/functions/convert-download?id=${encodeURIComponent(jobId)}` : ""),
+    createdAt: job.createdAt || "",
+    startedAt: job.startedAt || "",
+    completedAt: job.completedAt || "",
+  });
 };

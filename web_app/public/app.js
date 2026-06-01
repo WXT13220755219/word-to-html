@@ -96,11 +96,15 @@ async function readJsonResponse(response) {
   return response.json();
 }
 
-async function fetchJson(url, options) {
+async function fetchJson(url, options = {}, retries = 0) {
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, { cache: "no-store", ...options });
     return { response, result: await readJsonResponse(response) };
   } catch (error) {
+    if (retries > 0) {
+      await wait(1500);
+      return fetchJson(url, options, retries - 1);
+    }
     throw new Error(`请求 ${url} 失败：${error.message || String(error)}`);
   }
 }
@@ -115,9 +119,9 @@ async function waitForJob(jobId) {
 
   while (Date.now() - startedAt < timeoutMs) {
     await wait(3000);
-    const { response, result } = await fetchJson(`/.netlify/functions/convert-status?id=${encodeURIComponent(jobId)}`, {
+    const { response, result } = await fetchJson(`/.netlify/functions/convert-status?id=${encodeURIComponent(jobId)}&t=${Date.now()}`, {
       headers: { accept: "application/json" },
-    });
+    }, 2);
 
     if (!response.ok || !result.success) {
       throw new Error(result.error || "查询转换状态失败");
