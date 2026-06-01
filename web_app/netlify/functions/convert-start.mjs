@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { getEnv } from "./_shared/coze.mjs";
+import { callCozeWorkflow, getEnv } from "./_shared/coze.mjs";
 
 function jsonResponse(status, data) {
   return new Response(JSON.stringify(data), {
@@ -15,7 +15,31 @@ function createJobId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export default async (request) => {
+async function processJob(store, { jobId, filename, base64 }) {
+  try {
+    await store.setJSON(`jobs/${jobId}.json`, {
+      status: "processing",
+      filename,
+      startedAt: new Date().toISOString(),
+    });
+
+    const result = await callCozeWorkflow({ filename, base64 });
+    await store.setJSON(`jobs/${jobId}.json`, {
+      status: "done",
+      filename: result.filename,
+      html: result.html,
+      completedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    await store.setJSON(`jobs/${jobId}.json`, {
+      status: "error",
+      error: error.message || String(error),
+      completedAt: new Date().toISOString(),
+    });
+  }
+}
+
+export default async (request, context) => {
   if (request.method !== "POST") {
     return jsonResponse(405, { success: false, error: "method not allowed" });
   }
@@ -49,15 +73,11 @@ export default async (request) => {
       createdAt: new Date().toISOString(),
     });
 
-    const workerUrl = new URL("/.netlify/functions/convert-worker-background", request.url);
-    const workerResponse = await fetch(workerUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jobId, filename, base64 }),
-    });
-
-    if (!workerResponse.ok && workerResponse.status !== 202) {
-      throw new Error(`后台任务启动失败：HTTP ${workerResponse.status}`);
+    const work = processJob(store, { jobId, filename, base64 });
+    if (context?.waitUntil) {
+      context.waitUntil(work);
+    } else {
+      work.catch(() => {});
     }
 
     return jsonResponse(202, { success: true, jobId });
