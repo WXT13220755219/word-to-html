@@ -100,6 +100,12 @@ async function convert() {
     });
 
     setProgress("生成 HTML...", 75);
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const text = await response.text();
+      throw new Error(`转换接口返回 HTTP ${response.status}，不是 JSON：${text.slice(0, 120)}`);
+    }
+
     const result = await response.json();
     if (!response.ok || !result.success) {
       throw new Error(result.error || "转换失败");
