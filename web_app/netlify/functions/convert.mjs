@@ -104,30 +104,48 @@ export default async (request) => {
     return jsonResponse(405, { success: false, error: "method not allowed" });
   }
 
-  try {
-    const maxDocxBytes = Number(getEnv("MAX_DOCX_BYTES", String(4 * 1024 * 1024)));
-    const body = await request.json();
-    const filename = String(body.filename || "document.docx");
-    const base64 = String(body.base64 || "").replace(/^data:[^,]+,/, "").replace(/\s+/g, "");
+  const encoder = new TextEncoder();
 
-    if (!filename.toLowerCase().endsWith(".docx")) {
-      throw new Error("请上传 .docx 文件");
-    }
-    if (!base64) {
-      throw new Error("没有收到 Word 文件内容");
-    }
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        const keepAlive = setInterval(() => {
+          controller.enqueue(encoder.encode(" "));
+        }, 5000);
 
-    const approxBytes = Math.floor((base64.length * 3) / 4);
-    if (approxBytes > maxDocxBytes) {
-      return jsonResponse(413, {
-        success: false,
-        error: `文件过大，Netlify 部署默认最大支持 ${Math.floor(maxDocxBytes / 1024 / 1024)}MB`,
-      });
-    }
+        try {
+          const maxDocxBytes = Number(getEnv("MAX_DOCX_BYTES", String(4 * 1024 * 1024)));
+          const body = await request.json();
+          const filename = String(body.filename || "document.docx");
+          const base64 = String(body.base64 || "").replace(/^data:[^,]+,/, "").replace(/\s+/g, "");
 
-    const result = await callCozeWorkflow({ filename, base64 });
-    return jsonResponse(200, { success: true, ...result });
-  } catch (error) {
-    return jsonResponse(400, { success: false, error: error.message || String(error) });
-  }
+          if (!filename.toLowerCase().endsWith(".docx")) {
+            throw new Error("请上传 .docx 文件");
+          }
+          if (!base64) {
+            throw new Error("没有收到 Word 文件内容");
+          }
+
+          const approxBytes = Math.floor((base64.length * 3) / 4);
+          if (approxBytes > maxDocxBytes) {
+            throw new Error(`文件过大，Netlify 部署默认最大支持 ${Math.floor(maxDocxBytes / 1024 / 1024)}MB`);
+          }
+
+          const result = await callCozeWorkflow({ filename, base64 });
+          controller.enqueue(encoder.encode(JSON.stringify({ success: true, ...result })));
+        } catch (error) {
+          controller.enqueue(encoder.encode(JSON.stringify({ success: false, error: error.message || String(error) })));
+        } finally {
+          clearInterval(keepAlive);
+          controller.close();
+        }
+      },
+    }),
+    {
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    }
+  );
 };
