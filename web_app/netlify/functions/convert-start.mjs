@@ -39,6 +39,27 @@ async function processJob(store, { jobId, filename, base64 }) {
   }
 }
 
+async function runJob(store, { jobId, filename, base64 }) {
+  try {
+    await store.setJSON(`jobs/${jobId}.json`, {
+      status: "queued",
+      filename,
+      createdAt: new Date().toISOString(),
+    });
+    await processJob(store, { jobId, filename, base64 });
+  } catch (error) {
+    try {
+      await store.setJSON(`jobs/${jobId}.json`, {
+        status: "error",
+        error: error.message || String(error),
+        completedAt: new Date().toISOString(),
+      });
+    } catch {
+      // If Blobs itself is unavailable, the function log is the only useful signal.
+    }
+  }
+}
+
 export default async (request, context) => {
   if (request.method !== "POST") {
     return jsonResponse(405, { success: false, error: "method not allowed" });
@@ -67,13 +88,8 @@ export default async (request, context) => {
 
     const jobId = createJobId();
     const store = getStore({ name: "word-to-html-jobs", consistency: "strong" });
-    await store.setJSON(`jobs/${jobId}.json`, {
-      status: "queued",
-      filename,
-      createdAt: new Date().toISOString(),
-    });
+    const work = runJob(store, { jobId, filename, base64 });
 
-    const work = processJob(store, { jobId, filename, base64 });
     if (context?.waitUntil) {
       context.waitUntil(work);
     } else {

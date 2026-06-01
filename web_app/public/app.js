@@ -85,6 +85,15 @@ async function readJsonResponse(response) {
   return response.json();
 }
 
+async function fetchJson(url, options) {
+  try {
+    const response = await fetch(url, options);
+    return { response, result: await readJsonResponse(response) };
+  } catch (error) {
+    throw new Error(`请求 ${url} 失败：${error.message || String(error)}`);
+  }
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -95,10 +104,9 @@ async function waitForJob(jobId) {
 
   while (Date.now() - startedAt < timeoutMs) {
     await wait(3000);
-    const response = await fetch(`/api/convert/status?id=${encodeURIComponent(jobId)}`, {
+    const { response, result } = await fetchJson(`/.netlify/functions/convert-status?id=${encodeURIComponent(jobId)}`, {
       headers: { accept: "application/json" },
     });
-    const result = await readJsonResponse(response);
 
     if (!response.ok || !result.success) {
       throw new Error(result.error || "查询转换状态失败");
@@ -132,7 +140,7 @@ async function convert() {
     const base64 = await fileToBase64(selectedFile);
 
     setProgress("提交到转换服务...", 45);
-    const response = await fetch("/api/convert", {
+    const { response, result: startResult } = await fetchJson("/.netlify/functions/convert-start", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -141,7 +149,6 @@ async function convert() {
       }),
     });
 
-    const startResult = await readJsonResponse(response);
     if (!response.ok || !startResult.success) {
       throw new Error(startResult.error || "转换任务启动失败");
     }
