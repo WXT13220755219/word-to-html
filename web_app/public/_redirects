@@ -1,3 +1,4 @@
+/api/backend-config  /.netlify/functions/backend-config  200!
 /api/upload-config  /.netlify/functions/upload-config  200!
 /api/convert/download  /.netlify/functions/convert-download  200!
 /api/convert/status  /.netlify/functions/convert-status  200!

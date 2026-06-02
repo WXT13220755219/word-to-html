@@ -4,4 +4,5 @@ __pycache__/
 .env
 *.env
 web_app/.env
+web_app/.tmp_uploads/
 密钥.txt

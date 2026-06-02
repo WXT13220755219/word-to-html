@@ -10,6 +10,11 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api/backend-config"
+  to = "/.netlify/functions/backend-config"
+  status = 200
+
+[[redirects]]
   from = "/api/upload-config"
   to = "/.netlify/functions/upload-config"
   status = 200

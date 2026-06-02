@@ -120,6 +120,54 @@ async function getUploadConfig() {
   return result;
 }
 
+async function getBackendConfig() {
+  if (!location.hostname.includes("netlify.app")) {
+    return {
+      success: true,
+      endpoint: `${location.origin}/api/convert-file`,
+      maxBytes: 50 * 1024 * 1024,
+    };
+  }
+
+  try {
+    const { response, result } = await fetchJson("/.netlify/functions/backend-config", {
+      headers: { accept: "application/json" },
+    }, 1);
+    if (response.ok && result.success && result.endpoint) {
+      return result;
+    }
+  } catch {
+    // Fall back to the Netlify/R2 path when no external backend is configured.
+  }
+
+  return { success: false, endpoint: "", maxBytes: 0 };
+}
+
+async function convertWithBackend(file, config) {
+  if (file.size > Number(config.maxBytes || 50 * 1024 * 1024)) {
+    throw new Error(`文件过大：宝塔转换服务最大支持 ${formatBytes(Number(config.maxBytes))}，当前文件 ${formatBytes(file.size)}。`);
+  }
+
+  const url = new URL(config.endpoint);
+  url.searchParams.set("filename", file.name);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "x-filename": file.name,
+    },
+    body: file,
+  });
+  const result = await readJsonResponse(response);
+
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `宝塔转换服务失败：HTTP ${response.status}`);
+  }
+
+  return result;
+}
+
 async function uploadDocxToStorage(file) {
   const config = await getUploadConfig();
   if (file.size > Number(config.maxBytes || 25 * 1024 * 1024)) {
@@ -201,6 +249,17 @@ async function convert() {
   setMessage("");
 
   try {
+    const backendConfig = await getBackendConfig();
+    if (backendConfig.success && backendConfig.endpoint) {
+      setProgress("上传到临时转换服务...", 25);
+      const result = await convertWithBackend(selectedFile, backendConfig);
+      setProgress("准备下载...", 95);
+      downloadHtml(result.filename, result.html);
+      setProgress("下载已开始", 100);
+      setMessage(`已生成 ${result.filename}`);
+      return;
+    }
+
     let payload;
     if (selectedFile.size > DIRECT_DOCX_BYTES) {
       setProgress("上传 Word 文件...", 25);

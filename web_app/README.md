@@ -77,3 +77,38 @@ Set these environment variables in Netlify before testing conversion:
 Netlify serves `web_app/public` as the static site and routes `POST /api/convert` to the function.
 
 Files larger than 4MB are uploaded to object storage first, then the resulting `docx_url` is passed to Coze.
+
+## Baota / VPS temporary-file backend
+
+For large files without keeping user uploads in object storage, deploy `web_app/server.mjs`
+on a Node-capable Baota site:
+
+```powershell
+cd web_app
+node server.mjs
+```
+
+Set server environment variables:
+
+- `COZE_API_TOKEN`
+- `COZE_WORKFLOW_ID`
+- `COZE_API_BASE=https://api.coze.cn`
+- `MAX_DOCX_BYTES=52428800`
+- `PORT=8787`
+
+Configure Nginx on Baota:
+
+```nginx
+client_max_body_size 50m;
+proxy_read_timeout 900s;
+proxy_send_timeout 900s;
+```
+
+The endpoint `POST /api/convert-file` accepts the raw `.docx` request body,
+stores it only in `web_app/.tmp_uploads`, calls Coze, and deletes the temp file
+in a `finally` block.
+
+If the frontend stays on Netlify, set:
+
+- `BAOTA_API_BASE=https://your-api.example.com`
+- `BAOTA_MAX_DOCX_BYTES=52428800`
