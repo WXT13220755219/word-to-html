@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import http from "node:http";
+import https from "node:https";
 import { createWriteStream, readFileSync } from "node:fs";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -166,6 +168,42 @@ function normalizeWorkflowResult(payload) {
   return payload;
 }
 
+function postJson(url, headers, data) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const body = JSON.stringify(data);
+    const client = target.protocol === "https:" ? https : http;
+    const request = client.request({
+      method: "POST",
+      hostname: target.hostname,
+      port: target.port || (target.protocol === "https:" ? 443 : 80),
+      path: `${target.pathname}${target.search}`,
+      headers: {
+        ...headers,
+        "content-length": Buffer.byteLength(body),
+      },
+      timeout: Number(process.env.COZE_TIMEOUT_MS || 12 * 60 * 1000),
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        resolve({
+          ok: response.statusCode >= 200 && response.statusCode < 300,
+          status: response.statusCode,
+          text: Buffer.concat(chunks).toString("utf8"),
+        });
+      });
+    });
+
+    request.on("timeout", () => {
+      request.destroy(new Error("Coze API 请求超时"));
+    });
+    request.on("error", reject);
+    request.write(body);
+    request.end();
+  });
+}
+
 async function callCozeWorkflow({ filename, base64 }) {
   const token = process.env.COZE_API_TOKEN;
   const workflowId = process.env.COZE_WORKFLOW_ID;
@@ -178,13 +216,10 @@ async function callCozeWorkflow({ filename, base64 }) {
     throw new Error("服务端缺少 COZE_WORKFLOW_ID，请先配置环境变量");
   }
 
-  const response = await fetch(`${apiBase}/v1/workflow/run`, {
-    method: "POST",
-    headers: {
+  const response = await postJson(`${apiBase}/v1/workflow/run`, {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
-    },
-    body: JSON.stringify({
+    }, {
       workflow_id: workflowId,
       parameters: {
         docx_base64: base64,
@@ -192,10 +227,9 @@ async function callCozeWorkflow({ filename, base64 }) {
         docx_file: base64,
         filename,
       },
-    }),
-  });
+    });
 
-  const text = await response.text();
+  const text = response.text;
   let payload;
   try {
     payload = JSON.parse(text);
