@@ -26,10 +26,17 @@ export default async (request) => {
     });
 
     const result = await callCozeWorkflow({ filename, base64 });
+    await store.set(`results/${jobId}.html`, result.html, {
+      metadata: {
+        filename: result.filename,
+        contentType: "text/html; charset=utf-8",
+        completedAt: new Date().toISOString(),
+      },
+    });
     await store.setJSON(`jobs/${jobId}.json`, {
       status: "done",
       filename: result.filename,
-      html: result.html,
+      downloadUrl: `/.netlify/functions/convert-download?id=${encodeURIComponent(jobId)}`,
       completedAt: new Date().toISOString(),
     });
   } catch (error) {
