@@ -86,13 +86,6 @@ function downloadFromUrl(url, filename) {
   anchor.remove();
 }
 
-function createJobId() {
-  if (crypto?.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 async function readJsonResponse(response) {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
@@ -167,23 +160,21 @@ async function convert() {
     const base64 = await fileToBase64(selectedFile);
 
     setProgress("提交到转换服务...", 45);
-    const jobId = createJobId();
-    const response = await fetch("/.netlify/functions/convert-worker-background", {
+    const { response, result: startResult } = await fetchJson("/.netlify/functions/convert-start", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        jobId,
         filename: selectedFile.name,
         base64,
       }),
     });
 
-    if (!response.ok && response.status !== 202) {
-      throw new Error(`后台任务启动失败：HTTP ${response.status}`);
+    if (!response.ok || !startResult.success) {
+      throw new Error(startResult.error || `后台任务启动失败：HTTP ${response.status}`);
     }
 
     setProgress("生成 HTML...", 55);
-    const result = await waitForJob(jobId);
+    const result = await waitForJob(startResult.jobId);
 
     setProgress("准备下载...", 95);
     if (result.downloadUrl) {

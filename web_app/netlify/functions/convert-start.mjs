@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { callCozeWorkflow, getEnv } from "./_shared/coze.mjs";
+import { getEnv } from "./_shared/coze.mjs";
 
 function jsonResponse(status, data) {
   return new Response(JSON.stringify(data), {
@@ -15,59 +15,7 @@ function createJobId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-async function processJob(store, { jobId, filename, base64 }) {
-  try {
-    await store.setJSON(`jobs/${jobId}.json`, {
-      status: "processing",
-      filename,
-      startedAt: new Date().toISOString(),
-    });
-
-    const result = await callCozeWorkflow({ filename, base64 });
-    await store.set(`results/${jobId}.html`, result.html, {
-      metadata: {
-        filename: result.filename,
-        contentType: "text/html; charset=utf-8",
-        completedAt: new Date().toISOString(),
-      },
-    });
-    await store.setJSON(`jobs/${jobId}.json`, {
-      status: "done",
-      filename: result.filename,
-      downloadUrl: `/.netlify/functions/convert-download?id=${encodeURIComponent(jobId)}`,
-      completedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    await store.setJSON(`jobs/${jobId}.json`, {
-      status: "error",
-      error: error.message || String(error),
-      completedAt: new Date().toISOString(),
-    });
-  }
-}
-
-async function runJob(store, { jobId, filename, base64 }) {
-  try {
-    await store.setJSON(`jobs/${jobId}.json`, {
-      status: "queued",
-      filename,
-      createdAt: new Date().toISOString(),
-    });
-    await processJob(store, { jobId, filename, base64 });
-  } catch (error) {
-    try {
-      await store.setJSON(`jobs/${jobId}.json`, {
-        status: "error",
-        error: error.message || String(error),
-        completedAt: new Date().toISOString(),
-      });
-    } catch {
-      // If Blobs itself is unavailable, the function log is the only useful signal.
-    }
-  }
-}
-
-export default async (request, context) => {
+export default async (request) => {
   if (request.method !== "POST") {
     return jsonResponse(405, { success: false, error: "method not allowed" });
   }
@@ -95,12 +43,32 @@ export default async (request, context) => {
 
     const jobId = createJobId();
     const store = getStore({ name: "word-to-html-jobs", consistency: "strong" });
-    const work = runJob(store, { jobId, filename, base64 });
+    await store.setJSON(`inputs/${jobId}.json`, {
+      filename,
+      base64,
+      createdAt: new Date().toISOString(),
+    });
+    await store.setJSON(`jobs/${jobId}.json`, {
+      status: "queued",
+      filename,
+      createdAt: new Date().toISOString(),
+    });
 
-    if (context?.waitUntil) {
-      context.waitUntil(work);
-    } else {
-      work.catch(() => {});
+    const workerUrl = new URL("/.netlify/functions/convert-worker-background", request.url);
+    const workerResponse = await fetch(workerUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jobId }),
+    });
+
+    if (!workerResponse.ok && workerResponse.status !== 202) {
+      await store.setJSON(`jobs/${jobId}.json`, {
+        status: "error",
+        filename,
+        error: `后台任务启动失败：HTTP ${workerResponse.status}`,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`后台任务启动失败：HTTP ${workerResponse.status}`);
     }
 
     return jsonResponse(202, { success: true, jobId });

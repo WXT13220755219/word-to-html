@@ -12,11 +12,20 @@ export default async (request) => {
   try {
     const body = await request.json();
     jobId = String(body.jobId || "");
-    const filename = String(body.filename || "document.docx");
-    const base64 = String(body.base64 || "");
 
     if (!isValidJobId(jobId)) {
       throw new Error("无效的任务 ID");
+    }
+
+    const input = await store.get(`inputs/${jobId}.json`, { type: "json" });
+    if (!input) {
+      throw new Error("任务输入不存在或已过期");
+    }
+
+    const filename = String(input.filename || "document.docx");
+    const base64 = String(input.base64 || "");
+    if (!base64) {
+      throw new Error("任务输入缺少 Word 文件内容");
     }
 
     await store.setJSON(`jobs/${jobId}.json`, {
@@ -39,6 +48,7 @@ export default async (request) => {
       downloadUrl: `/.netlify/functions/convert-download?id=${encodeURIComponent(jobId)}`,
       completedAt: new Date().toISOString(),
     });
+    await store.delete(`inputs/${jobId}.json`);
   } catch (error) {
     if (isValidJobId(jobId)) {
       await store.setJSON(`jobs/${jobId}.json`, {
