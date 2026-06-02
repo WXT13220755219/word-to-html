@@ -25,16 +25,17 @@ export default async (request) => {
     const body = await request.json();
     const filename = String(body.filename || "document.docx");
     const base64 = String(body.base64 || "").replace(/^data:[^,]+,/, "").replace(/\s+/g, "");
+    const docxUrl = String(body.docx_url || body.docxUrl || body.file_url || "").trim();
 
     if (!filename.toLowerCase().endsWith(".docx")) {
       throw new Error("请上传 .docx 文件");
     }
-    if (!base64) {
-      throw new Error("没有收到 Word 文件内容");
+    if (!base64 && !docxUrl) {
+      throw new Error("没有收到 Word 文件内容或文件 URL");
     }
 
     const approxBytes = Math.floor((base64.length * 3) / 4);
-    if (approxBytes > maxDocxBytes) {
+    if (base64 && approxBytes > maxDocxBytes) {
       return jsonResponse(413, {
         success: false,
         error: `文件过大，Netlify 部署默认最大支持 ${Math.floor(maxDocxBytes / 1024 / 1024)}MB`,
@@ -46,6 +47,7 @@ export default async (request) => {
     await store.setJSON(`inputs/${jobId}.json`, {
       filename,
       base64,
+      docxUrl,
       createdAt: new Date().toISOString(),
     });
     await store.setJSON(`jobs/${jobId}.json`, {

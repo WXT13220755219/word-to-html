@@ -36,7 +36,7 @@ function normalizeWorkflowResult(payload) {
   return payload;
 }
 
-export async function callCozeWorkflow({ filename, base64 }) {
+export async function callCozeWorkflow({ filename, base64 = "", docxUrl = "" }) {
   const token = getEnv("COZE_API_TOKEN");
   const workflowId = getEnv("COZE_WORKFLOW_ID");
   const apiBase = getEnv("COZE_API_BASE", "https://api.coze.cn").replace(/\/+$/, "");
@@ -58,8 +58,10 @@ export async function callCozeWorkflow({ filename, base64 }) {
       workflow_id: workflowId,
       parameters: {
         docx_base64: base64,
-        input: base64,
-        docx_file: base64,
+        input: docxUrl || base64,
+        docx_file: docxUrl || base64,
+        docx_url: docxUrl,
+        file_url: docxUrl,
         filename,
       },
     }),

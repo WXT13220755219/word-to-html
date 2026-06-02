@@ -1,6 +1,7 @@
 # upload-html service on Cloudflare Workers + R2
 
 This service accepts generated HTML from Coze and returns a stable download URL.
+It can also accept large `.docx` uploads and return a URL that Coze can download.
 
 ## API
 
@@ -33,6 +34,32 @@ Response:
 ```
 
 `GET /files/<key>` downloads the stored HTML file.
+
+## Word upload API
+
+`POST /upload-docx`
+
+Headers:
+
+- `X-Upload-Token: <UPLOAD_TOKEN>`
+
+Body:
+
+- `multipart/form-data`
+- field name: `file`
+- file type: `.docx`
+
+Response:
+
+```json
+{
+  "success": true,
+  "filename": "document.docx",
+  "size": 12345,
+  "docx_url": "https://your-worker.workers.dev/files/...",
+  "file_url": "https://your-worker.workers.dev/files/..."
+}
+```
 
 ## Deploy
 
@@ -70,3 +97,7 @@ curl -X POST "https://your-worker.workers.dev/upload-html" \
 - Set an R2 lifecycle rule if you want files to expire automatically.
 - For production, bind a custom domain and set `PUBLIC_BASE_URL`.
 - Keep `UPLOAD_TOKEN` private. Coze should send it only from the final upload node.
+- For the Netlify frontend large-file flow, set these Netlify environment variables:
+  - `DOCX_UPLOAD_ENDPOINT=https://your-worker.workers.dev/upload-docx`
+  - `DOCX_UPLOAD_TOKEN=<UPLOAD_TOKEN>`
+  - `DOCX_UPLOAD_MAX_BYTES=26214400`

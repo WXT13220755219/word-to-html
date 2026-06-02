@@ -10,6 +10,7 @@ const statusText = document.querySelector("#statusText");
 const message = document.querySelector("#message");
 
 let selectedFile = null;
+const DIRECT_DOCX_BYTES = 4 * 1024 * 1024;
 
 function setMessage(text, isError = false) {
   message.textContent = text || "";
@@ -109,6 +110,50 @@ async function fetchJson(url, options = {}, retries = 0) {
   }
 }
 
+async function getUploadConfig() {
+  const { response, result } = await fetchJson("/.netlify/functions/upload-config", {
+    headers: { accept: "application/json" },
+  }, 1);
+  if (!response.ok || !result.success || !result.endpoint) {
+    throw new Error("大文件上传服务未配置，请在 Netlify 配置 DOCX_UPLOAD_ENDPOINT");
+  }
+  return result;
+}
+
+async function uploadDocxToStorage(file) {
+  const config = await getUploadConfig();
+  if (file.size > Number(config.maxBytes || 25 * 1024 * 1024)) {
+    throw new Error(`文件过大：上传服务最大支持 ${formatBytes(Number(config.maxBytes))}，当前文件 ${formatBytes(file.size)}。`);
+  }
+
+  const form = new FormData();
+  form.append("file", file, file.name);
+
+  const headers = {};
+  if (config.token) {
+    headers["x-upload-token"] = config.token;
+  }
+
+  const response = await fetch(config.endpoint, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  const result = await readJsonResponse(response);
+
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || `上传 Word 文件失败：HTTP ${response.status}`);
+  }
+  if (!result.docx_url && !result.file_url && !result.url) {
+    throw new Error("上传服务没有返回 docx_url");
+  }
+
+  return {
+    filename: result.filename || file.name,
+    docxUrl: result.docx_url || result.file_url || result.url,
+  };
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -156,17 +201,28 @@ async function convert() {
   setMessage("");
 
   try {
-    setProgress("读取 Word 文件...", 25);
-    const base64 = await fileToBase64(selectedFile);
+    let payload;
+    if (selectedFile.size > DIRECT_DOCX_BYTES) {
+      setProgress("上传 Word 文件...", 25);
+      const uploaded = await uploadDocxToStorage(selectedFile);
+      payload = {
+        filename: uploaded.filename,
+        docx_url: uploaded.docxUrl,
+      };
+    } else {
+      setProgress("读取 Word 文件...", 25);
+      const base64 = await fileToBase64(selectedFile);
+      payload = {
+        filename: selectedFile.name,
+        base64,
+      };
+    }
 
     setProgress("提交到转换服务...", 45);
     const { response, result: startResult } = await fetchJson("/.netlify/functions/convert-start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        filename: selectedFile.name,
-        base64,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok || !startResult.success) {

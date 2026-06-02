@@ -1,0 +1,12 @@
+name = "upload-html"
+main = "worker.mjs"
+compatibility_date = "2026-05-30"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "HTML_BUCKET"
+bucket_name = "word-to-html"
+
+[vars]
+MAX_BYTES = "26214400"
+ALLOW_ORIGINS = "https://wordhtml.netlify.app"

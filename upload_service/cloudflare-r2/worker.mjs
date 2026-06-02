@@ -50,16 +50,29 @@ function safeFilename(value) {
   return name || "document.html";
 }
 
-function asciiFilename(value) {
-  const fallback = safeFilename(value).replace(/[^\x20-\x7e]+/g, "_");
-  return fallback || "document.html";
+function safeDocxFilename(value) {
+  let name = String(value || "document.docx").trim();
+  name = name.replace(/[\\/:*?"<>|]+/g, "_");
+  name = name.replace(/\s+/g, "_");
+  if (!name.toLowerCase().endsWith(".docx")) {
+    name += ".docx";
+  }
+  if (name.length > 120) {
+    name = name.slice(0, 115) + ".docx";
+  }
+  return name || "document.docx";
 }
 
-function objectKey(filename) {
+function asciiFilename(value) {
+  const fallback = String(value || "document").replace(/[^\x20-\x7e]+/g, "_");
+  return fallback || "document";
+}
+
+function objectKey(filename, prefix = "html") {
   const now = new Date();
   const day = now.toISOString().slice(0, 10);
   const id = crypto.randomUUID();
-  return `html/${day}/${id}-${filename}`;
+  return `${prefix}/${day}/${id}-${filename}`;
 }
 
 function publicBaseUrl(request, env) {
@@ -127,7 +140,7 @@ async function handleUpload(request, env) {
     }, 413);
   }
 
-  const key = objectKey(payload.filename);
+  const key = objectKey(payload.filename, "html");
   await env.HTML_BUCKET.put(key, payload.bytes, {
     httpMetadata: {
       contentType: "text/html; charset=utf-8",
@@ -150,6 +163,81 @@ async function handleUpload(request, env) {
   });
 }
 
+async function parseDocxUploadBody(request) {
+  const contentType = request.headers.get("content-type") || "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const file = form.get("file") || form.get("docx");
+    if (!(file instanceof File)) {
+      throw new Error("file is required");
+    }
+    const filename = safeDocxFilename(file.name);
+    return {
+      filename,
+      bytes: await file.arrayBuffer(),
+      contentType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    };
+  }
+
+  if (contentType.includes("application/vnd.openxmlformats-officedocument.wordprocessingml.document")) {
+    const url = new URL(request.url);
+    const filename = safeDocxFilename(url.searchParams.get("filename") || request.headers.get("x-filename"));
+    return {
+      filename,
+      bytes: await request.arrayBuffer(),
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    };
+  }
+
+  throw new Error("content-type must be multipart/form-data or application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+}
+
+async function handleDocxUpload(request, env) {
+  if (!isAuthorized(request, env)) {
+    return jsonResponse({ success: false, error: "unauthorized" }, 401);
+  }
+
+  let payload;
+  try {
+    payload = await parseDocxUploadBody(request);
+  } catch (error) {
+    return jsonResponse({ success: false, error: error.message }, 400);
+  }
+
+  const maxBytes = parseMaxBytes(env);
+  if (payload.bytes.byteLength > maxBytes) {
+    return jsonResponse({
+      success: false,
+      error: `file is too large: ${payload.bytes.byteLength} bytes, max ${maxBytes}`,
+    }, 413);
+  }
+
+  const key = objectKey(payload.filename, "docx");
+  await env.HTML_BUCKET.put(key, payload.bytes, {
+    httpMetadata: {
+      contentType: payload.contentType,
+      contentDisposition: `attachment; filename="${asciiFilename(payload.filename)}"; filename*=UTF-8''${encodeURIComponent(payload.filename)}`,
+    },
+    customMetadata: {
+      filename: payload.filename,
+      kind: "docx",
+      created_at: new Date().toISOString(),
+    },
+  });
+
+  const docxUrl = `${publicBaseUrl(request, env)}/files/${encodeURIComponent(key)}`;
+  return jsonResponse({
+    success: true,
+    filename: payload.filename,
+    size: payload.bytes.byteLength,
+    key,
+    docx_url: docxUrl,
+    file_url: docxUrl,
+    url: docxUrl,
+  });
+}
+
 async function handleDownload(request, env) {
   const url = new URL(request.url);
   const encoded = url.pathname.slice("/files/".length);
@@ -168,7 +256,7 @@ async function handleDownload(request, env) {
   object.writeHttpMetadata(headers);
   headers.set("etag", object.httpEtag);
   headers.set("cache-control", "private, max-age=0, no-store");
-  headers.set("content-type", headers.get("content-type") || "text/html; charset=utf-8");
+  headers.set("content-type", headers.get("content-type") || "application/octet-stream");
   headers.set(
     "content-disposition",
     `attachment; filename="${asciiFilename(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
@@ -191,6 +279,12 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/upload-html") {
       const response = await handleUpload(request, env);
+      Object.entries(headers).forEach(([name, value]) => response.headers.set(name, value));
+      return response;
+    }
+
+    if (request.method === "POST" && url.pathname === "/upload-docx") {
+      const response = await handleDocxUpload(request, env);
       Object.entries(headers).forEach(([name, value]) => response.headers.set(name, value));
       return response;
     }

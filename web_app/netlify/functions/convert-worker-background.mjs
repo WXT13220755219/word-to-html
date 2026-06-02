@@ -24,8 +24,9 @@ export default async (request) => {
 
     const filename = String(input.filename || "document.docx");
     const base64 = String(input.base64 || "");
-    if (!base64) {
-      throw new Error("任务输入缺少 Word 文件内容");
+    const docxUrl = String(input.docxUrl || input.docx_url || "");
+    if (!base64 && !docxUrl) {
+      throw new Error("任务输入缺少 Word 文件内容或文件 URL");
     }
 
     await store.setJSON(`jobs/${jobId}.json`, {
@@ -34,7 +35,7 @@ export default async (request) => {
       startedAt: new Date().toISOString(),
     });
 
-    const result = await callCozeWorkflow({ filename, base64 });
+    const result = await callCozeWorkflow({ filename, base64, docxUrl });
     await store.set(`results/${jobId}.html`, result.html, {
       metadata: {
         filename: result.filename,

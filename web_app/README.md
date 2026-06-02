@@ -70,5 +70,10 @@ Set these environment variables in Netlify before testing conversion:
 - `COZE_WORKFLOW_ID`
 - `COZE_API_BASE`
 - `MAX_DOCX_BYTES` optional; keep this around `4194304` on Netlify because function request bodies are limited.
+- `DOCX_UPLOAD_ENDPOINT` optional but required for large files; use your Cloudflare Worker `/upload-docx` URL.
+- `DOCX_UPLOAD_TOKEN` optional; must match the Worker `UPLOAD_TOKEN` when `/upload-docx` is protected.
+- `DOCX_UPLOAD_MAX_BYTES` optional; default `26214400`.
 
 Netlify serves `web_app/public` as the static site and routes `POST /api/convert` to the function.
+
+Files larger than 4MB are uploaded to object storage first, then the resulting `docx_url` is passed to Coze.
