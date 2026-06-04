@@ -7,11 +7,17 @@ This app lets a user upload a `.docx`, calls the Coze workflow, receives `{ html
 Add these start-node inputs to the workflow:
 
 - `docx_base64`: String
+- `docx_file`: String
+- `input`: String
+- `docx_url`: String
+- `file_url`: String
 - `filename`: String
 
 Map the `ExtractDocx` code node inputs like this:
 
-- `input` = start node `docx_base64`
+- `docx_file` = start node `docx_file`
+- `input` = start node `input`
+- `docx_base64` = start node `docx_base64`
 - `filename` = start node `filename`
 
 The workflow end node should return variables:
@@ -19,11 +25,13 @@ The workflow end node should return variables:
 - `html` = `ComposeFinalHtml.html`
 - `filename` = `ComposeFinalHtml.filename`
 
-If Coze returns `Missing required parameters`, check that the published workflow start node no longer has an unfilled required file input. The backend sends the Word content under three aliases for compatibility:
+If Coze returns `Missing required parameters`, check that the published workflow start node no longer has an unfilled required file input. The backend sends small files as base64 and large files through a temporary URL for compatibility:
 
 - `docx_base64`
 - `input`
 - `docx_file`
+- `docx_url`
+- `file_url`
 
 ## Configure
 
@@ -34,6 +42,7 @@ $env:COZE_API_TOKEN="pat_your_token_here"
 $env:COZE_WORKFLOW_ID="7645613836111740974"
 $env:COZE_API_BASE="https://api.coze.cn"
 $env:PORT="8787"
+$env:PUBLIC_BASE_URL="http://8.133.17.237:8787"
 ```
 
 ## Run
@@ -52,7 +61,7 @@ http://localhost:8787
 
 - Do not expose `COZE_API_TOKEN` in frontend JavaScript.
 - Put this Node service behind HTTPS before letting external users upload files.
-- If `.docx` files are large, passing base64 through the workflow may hit API limits. In that case, change the backend to upload the original file to your object storage first and pass a temporary file URL to the workflow.
+- Large `.docx` files should be passed to Coze as a temporary URL, not as base64 JSON, otherwise Coze/TLB can return `413 Request Entity Too Large`.
 
 ## Deploy to Netlify
 
@@ -95,6 +104,7 @@ Set server environment variables:
 - `COZE_API_BASE=https://api.coze.cn`
 - `MAX_DOCX_BYTES=52428800`
 - `PORT=8787`
+- `PUBLIC_BASE_URL=http://8.133.17.237:8787` while testing by IP, or `https://your-api.example.com` after binding HTTPS.
 
 Configure Nginx on Baota:
 
@@ -105,8 +115,8 @@ proxy_send_timeout 900s;
 ```
 
 The endpoint `POST /api/convert-file` accepts the raw `.docx` request body,
-stores it only in `web_app/.tmp_uploads`, calls Coze, and deletes the temp file
-in a `finally` block.
+stores it only in `web_app/.tmp_uploads`, passes Coze a one-time temporary URL,
+and deletes the temp file in a `finally` block after the workflow call returns.
 
 If the frontend stays on Netlify, set:
 

@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(ROOT, "public");
 const TEMP_DIR = join(ROOT, ".tmp_uploads");
+const APP_VERSION = "baota-temp-url-20260602-2";
 
 function loadDotEnv() {
   try {
@@ -36,6 +37,7 @@ loadDotEnv();
 
 const PORT = Number(process.env.PORT || 8787);
 const MAX_DOCX_BYTES = Number(process.env.MAX_DOCX_BYTES || 25 * 1024 * 1024);
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -204,7 +206,7 @@ function postJson(url, headers, data) {
   });
 }
 
-async function callCozeWorkflow({ filename, base64 }) {
+async function callCozeWorkflow({ filename, base64 = "", docxUrl = "" }) {
   const token = process.env.COZE_API_TOKEN;
   const workflowId = process.env.COZE_WORKFLOW_ID;
   const apiBase = (process.env.COZE_API_BASE || "https://api.coze.cn").replace(/\/+$/, "");
@@ -216,17 +218,27 @@ async function callCozeWorkflow({ filename, base64 }) {
     throw new Error("服务端缺少 COZE_WORKFLOW_ID，请先配置环境变量");
   }
 
+  const parameters = docxUrl
+    ? {
+        input: docxUrl,
+        docx_file: docxUrl,
+        docx_url: docxUrl,
+        file_url: docxUrl,
+        filename,
+      }
+    : {
+        docx_base64: base64,
+        input: base64,
+        docx_file: base64,
+        filename,
+      };
+
   const response = await postJson(`${apiBase}/v1/workflow/run`, {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
     }, {
       workflow_id: workflowId,
-      parameters: {
-        docx_base64: base64,
-        input: base64,
-        docx_file: base64,
-        filename,
-      },
+      parameters,
     });
 
   const text = response.text;
@@ -251,6 +263,65 @@ async function callCozeWorkflow({ filename, base64 }) {
     html: String(result.html),
     filename: String(result.filename || filename.replace(/\.docx?$/i, ".html") || "document.html"),
   };
+}
+
+function publicRequestBase(request) {
+  if (PUBLIC_BASE_URL) {
+    return PUBLIC_BASE_URL;
+  }
+  const forwardedProto = request.headers["x-forwarded-proto"];
+  const protocol = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto || "http";
+  const host = request.headers["x-forwarded-host"] || request.headers.host || `127.0.0.1:${PORT}`;
+  return `${protocol}://${host}`;
+}
+
+function tempDownloadToken(id) {
+  const secret = process.env.TEMP_FILE_SECRET || process.env.COZE_API_TOKEN || "word-to-html-temp";
+  return Buffer.from(`${id}:${secret}`)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function parseTempFileId(pathname) {
+  const prefix = "/api/temp-docx/";
+  if (!pathname.startsWith(prefix)) {
+    return "";
+  }
+  return decodeURIComponent(pathname.slice(prefix.length));
+}
+
+async function handleTempDocx(request, response) {
+  if (request.method !== "GET") {
+    sendJson(response, 405, { success: false, error: "method not allowed" });
+    return;
+  }
+
+  const url = new URL(request.url, "http://localhost");
+  const id = parseTempFileId(url.pathname);
+  const token = url.searchParams.get("token") || "";
+  if (!id || token !== tempDownloadToken(id)) {
+    sendJson(response, 403, { success: false, error: "forbidden" });
+    return;
+  }
+
+  const filePath = join(TEMP_DIR, id);
+  if (!filePath.startsWith(TEMP_DIR)) {
+    sendJson(response, 403, { success: false, error: "forbidden" });
+    return;
+  }
+
+  try {
+    const content = await readFile(filePath);
+    response.writeHead(200, {
+      "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "cache-control": "no-store",
+    });
+    response.end(content);
+  } catch {
+    sendJson(response, 404, { success: false, error: "file not found" });
+  }
 }
 
 async function handleConvert(request, response) {
@@ -304,8 +375,9 @@ async function handleConvertFile(request, response) {
       throw new Error("没有收到 Word 文件内容");
     }
 
-    const base64 = (await readFile(tempFile)).toString("base64");
-    const result = await callCozeWorkflow({ filename, base64 });
+    const tempId = tempFile.split(/[\\/]/).pop();
+    const docxUrl = `${publicRequestBase(request)}/api/temp-docx/${encodeURIComponent(tempId)}?token=${encodeURIComponent(tempDownloadToken(tempId))}`;
+    const result = await callCozeWorkflow({ filename, docxUrl });
     sendJson(response, 200, { success: true, ...result });
   } catch (error) {
     sendJson(response, 400, { success: false, error: error.message || String(error) });
@@ -348,13 +420,24 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (request.url?.startsWith("/api/temp-docx/")) {
+    await handleTempDocx(request, response);
+    return;
+  }
+
   if (request.url?.startsWith("/api/convert")) {
     await handleConvert(request, response);
     return;
   }
 
   if (request.url === "/health") {
-    sendJson(response, 200, { ok: true });
+    sendJson(response, 200, {
+      ok: true,
+      version: APP_VERSION,
+      mode: "temporary-docx-url",
+      publicBaseUrl: PUBLIC_BASE_URL || null,
+      maxBytes: MAX_DOCX_BYTES,
+    });
     return;
   }
 
