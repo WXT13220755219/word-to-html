@@ -3,46 +3,290 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Word 转精排 HTML</title>
+  <title>文档转 HTML 工具台</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main class="shell">
-    <section class="tool">
-      <div class="heading">
-        <div class="mark" aria-hidden="true">W</div>
-        <div>
-          <h1>Word 转精排 HTML</h1>
-          <p>上传未排版的 .docx，转换完成后自动下载单文件 HTML。</p>
+    <section class="tool" aria-labelledby="pageTitle">
+      <header class="topbar">
+        <div class="heading">
+          <div class="mark" aria-hidden="true">H</div>
+          <div class="heading-copy">
+            <p class="eyebrow">DOCUMENT TO HTML</p>
+            <h1 id="pageTitle">文档转 HTML 工具台</h1>
+            <p>把 Word、TXT 或文献 PDF 转成可直接分发的单文件网页。</p>
+          </div>
+        </div>
+        <span class="mode-pill">单文件 HTML</span>
+      </header>
+
+      <div class="tabs" role="tablist" aria-label="转换模式">
+        <button class="tab active" id="wordTab" type="button" role="tab" aria-selected="true" aria-controls="wordPanel" data-tab="word">Word 转 HTML</button>
+        <button class="tab" id="textTab" type="button" role="tab" aria-selected="false" aria-controls="textPanel" data-tab="text">TXT 转 HTML</button>
+        <button class="tab" id="paperTab" type="button" role="tab" aria-selected="false" aria-controls="paperPanel" data-tab="paper">PDF 转 HTML</button>
+      </div>
+
+      <div class="tab-panel" id="wordPanel" role="tabpanel" aria-labelledby="wordTab">
+        <div class="workspace">
+          <form id="convertForm" class="panel">
+            <label class="dropzone" id="dropzone">
+              <input id="fileInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+              <span class="drop-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 16V8"></path>
+                  <path d="m8 12 4-4 4 4"></path>
+                  <path d="M20 16.5a4.5 4.5 0 0 0-2.2-8.4A6 6 0 0 0 6.2 9.8 3.5 3.5 0 0 0 7.5 16.5"></path>
+                </svg>
+              </span>
+              <span class="drop-title">选择或拖入 Word 文件</span>
+              <span class="drop-meta" id="fileMeta">未选择文件</span>
+              <span class="drop-hint">支持 .docx · 最大 50MB</span>
+            </label>
+
+            <section class="file-card" id="fileCard" hidden>
+              <div class="section-label">当前文件</div>
+              <dl class="file-details">
+                <div>
+                  <dt>名称</dt>
+                  <dd id="fileName">-</dd>
+                </div>
+                <div>
+                  <dt>大小</dt>
+                  <dd id="fileSize">-</dd>
+                </div>
+                <div>
+                  <dt>格式</dt>
+                  <dd id="fileType">.docx</dd>
+                </div>
+                <div>
+                  <dt>上限</dt>
+                  <dd id="fileLimit">50MB</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="style-card" aria-labelledby="styleLabel">
+              <label class="section-label" id="styleLabel" for="styleSelect">输出风格</label>
+              <select id="styleSelect" name="template_style">
+                <option value="business" selected>商业方案风</option>
+                <option value="report">正式报告风</option>
+                <option value="magazine">杂志长文风</option>
+                <option value="tech">科技文档风</option>
+                <option value="card">卡片展示风</option>
+                <option value="simple">简洁阅读风</option>
+              </select>
+            </section>
+
+            <div class="actions">
+              <button id="convertButton" type="submit">
+                <span class="button-icon" aria-hidden="true">↓</span>
+                开始转换 HTML
+              </button>
+              <button id="clearButton" type="button" class="secondary">清空</button>
+            </div>
+
+            <div class="progress" id="progress" hidden>
+              <div class="progress-meta">
+                <p id="statusText">准备上传...</p>
+                <span class="progress-percent" id="progressPercent">15%</span>
+              </div>
+              <div class="bar"><span id="barFill"></span></div>
+              <ol class="steps" aria-label="转换进度">
+                <li data-step="upload">上传</li>
+                <li data-step="submit">抽取</li>
+                <li data-step="render">分析</li>
+                <li data-step="download">下载</li>
+              </ol>
+            </div>
+          </form>
+
+          <aside class="side-panel" aria-label="Word 转换规格配置">
+            <h2 class="panel-title">转换规格配置</h2>
+            <div class="metric-list">
+              <div><span>输入</span><b>Word</b></div>
+              <div><span>文件上限</span><b>50MB</b></div>
+              <div><span>输出</span><b>.html</b></div>
+              <div><span>风格</span><b id="styleName">商业方案风</b></div>
+              <div><span>图片</span><b>内嵌</b></div>
+            </div>
+          </aside>
         </div>
       </div>
 
-      <form id="convertForm" class="panel">
-        <label class="dropzone" id="dropzone">
-          <input id="fileInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-          <span class="drop-icon" aria-hidden="true">+</span>
-          <span class="drop-title">选择 Word 文件</span>
-          <span class="drop-meta" id="fileMeta">支持 .docx，建议小于 25MB</span>
-        </label>
+      <div class="tab-panel" id="textPanel" role="tabpanel" aria-labelledby="textTab" hidden>
+        <div class="workspace">
+          <form id="textForm" class="panel">
+            <label class="dropzone text-dropzone" id="textDropzone">
+              <input id="textFileInput" type="file" accept=".txt,text/plain">
+              <span class="drop-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 16V8"></path>
+                  <path d="m8 12 4-4 4 4"></path>
+                  <path d="M20 16.5a4.5 4.5 0 0 0-2.2-8.4A6 6 0 0 0 6.2 9.8 3.5 3.5 0 0 0 7.5 16.5"></path>
+                </svg>
+              </span>
+              <span class="drop-title">选择或拖入 TXT 文件</span>
+              <span class="drop-meta" id="textFileMeta">未选择文件</span>
+              <span class="drop-hint">支持 .txt · 最大 10MB / 100万字符</span>
+            </label>
 
-        <div class="actions">
-          <button id="convertButton" type="submit">
-            <span class="button-icon" aria-hidden="true">↓</span>
-            转换并下载
-          </button>
-          <button id="clearButton" type="button" class="secondary">清空</button>
-        </div>
+            <section class="file-card" id="textFileCard" hidden>
+              <div class="section-label">当前文件</div>
+              <dl class="file-details">
+                <div>
+                  <dt>名称</dt>
+                  <dd id="textFileName">-</dd>
+                </div>
+                <div>
+                  <dt>大小</dt>
+                  <dd id="textFileSize">-</dd>
+                </div>
+                <div>
+                  <dt>格式</dt>
+                  <dd id="textFileType">.txt</dd>
+                </div>
+                <div>
+                  <dt>上限</dt>
+                  <dd id="textFileLimit">10MB / 100万字符</dd>
+                </div>
+              </dl>
+            </section>
 
-        <div class="progress" id="progress" hidden>
-          <div class="bar"><span id="barFill"></span></div>
-          <p id="statusText">准备上传...</p>
+            <section class="style-card" aria-labelledby="textStyleLabel">
+              <label class="section-label" id="textStyleLabel" for="textStyleSelect">输出风格</label>
+              <select id="textStyleSelect" name="template_style">
+                <option value="business" selected>商业方案风</option>
+                <option value="report">正式报告风</option>
+                <option value="magazine">杂志长文风</option>
+                <option value="tech">科技文档风</option>
+                <option value="card">卡片展示风</option>
+                <option value="simple">简洁阅读风</option>
+              </select>
+            </section>
+
+            <div class="actions">
+              <button id="textConvertButton" type="submit">
+                <span class="button-icon" aria-hidden="true">↓</span>
+                开始转换 HTML
+              </button>
+              <button id="textClearButton" type="button" class="secondary">清空</button>
+            </div>
+
+            <div class="progress" id="textProgress" hidden>
+              <div class="progress-meta">
+                <p id="textStatusText">准备上传...</p>
+                <span class="progress-percent" id="textProgressPercent">15%</span>
+              </div>
+              <div class="bar"><span id="textBarFill"></span></div>
+              <ol class="steps" aria-label="TXT 转换进度">
+                <li data-text-step="upload">上传</li>
+                <li data-text-step="parse">抽取</li>
+                <li data-text-step="render">分析</li>
+                <li data-text-step="download">下载</li>
+              </ol>
+            </div>
+          </form>
+
+          <aside class="side-panel" aria-label="TXT 转换规格配置">
+            <h2 class="panel-title">转换规格配置</h2>
+            <div class="metric-list">
+              <div><span>输入</span><b>TXT</b></div>
+              <div><span>文件上限</span><b>10MB</b></div>
+              <div><span>字符上限</span><b>100万</b></div>
+              <div><span>输出</span><b>.html</b></div>
+              <div><span>风格</span><b id="textStyleName">商业方案风</b></div>
+            </div>
+          </aside>
         </div>
-      </form>
+      </div>
+
+      <div class="tab-panel" id="paperPanel" role="tabpanel" aria-labelledby="paperTab" hidden>
+        <div class="workspace">
+          <form id="paperForm" class="panel">
+            <label class="dropzone paper-dropzone" id="paperDropzone">
+              <input id="paperFileInput" type="file" accept=".pdf,application/pdf">
+              <span class="drop-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 16V8"></path>
+                  <path d="m8 12 4-4 4 4"></path>
+                  <path d="M20 16.5a4.5 4.5 0 0 0-2.2-8.4A6 6 0 0 0 6.2 9.8 3.5 3.5 0 0 0 7.5 16.5"></path>
+                </svg>
+              </span>
+              <span class="drop-title">选择或拖入 PDF 文件</span>
+              <span class="drop-meta" id="paperFileMeta">未选择文件</span>
+              <span class="drop-hint">仅支持文字型 PDF（最大 30MB / 80页）</span>
+            </label>
+
+            <section class="file-card" id="paperFileCard" hidden>
+              <div class="section-label">当前文件</div>
+              <dl class="file-details">
+                <div>
+                  <dt>名称</dt>
+                  <dd id="paperFileName">-</dd>
+                </div>
+                <div>
+                  <dt>大小</dt>
+                  <dd id="paperFileSize">-</dd>
+                </div>
+                <div>
+                  <dt>格式</dt>
+                  <dd id="paperFileType">.pdf</dd>
+                </div>
+                <div>
+                  <dt>上限</dt>
+                  <dd id="paperFileLimit">30MB / 80页</dd>
+                </div>
+              </dl>
+            </section>
+
+            <div class="actions">
+              <button id="paperConvertButton" type="submit">
+                <span class="button-icon" aria-hidden="true">↓</span>
+                开始转换 HTML
+              </button>
+              <button id="paperClearButton" type="button" class="secondary">清空</button>
+            </div>
+
+            <div class="progress" id="paperProgress" hidden>
+              <div class="progress-meta">
+                <p id="paperStatusText">准备上传...</p>
+                <span class="progress-percent" id="paperProgressPercent">15%</span>
+              </div>
+              <div class="bar"><span id="paperBarFill"></span></div>
+              <ol class="steps" aria-label="PDF 转换进度">
+                <li data-paper-step="upload">上传</li>
+                <li data-paper-step="extract">抽取</li>
+                <li data-paper-step="analyze">分析</li>
+                <li data-paper-step="download">下载</li>
+              </ol>
+            </div>
+          </form>
+
+          <aside class="side-panel" aria-label="PDF 转换规格配置">
+            <h2 class="panel-title">转换规格配置</h2>
+            <div class="metric-list">
+              <div><span>输入</span><b>PDF</b></div>
+              <div><span>文件上限</span><b>30MB / 80页</b></div>
+              <div><span>输出</span><b>.html</b></div>
+              <div><span>解析</span><b>文字型 PDF</b></div>
+              <div><span>结果</span><b>网页/文献卡片</b></div>
+            </div>
+          </aside>
+        </div>
+      </div>
 
       <p class="message" id="message" role="status"></p>
+
+      <footer class="foot">
+        <span>✓ 输出<b>单文件 HTML</b>（可直接分发）</span>
+        <span>✓ 自带<b>可跳转目录</b></span>
+        <span>✓ 公式由 <b>MathJax</b> 渲染</span>
+        <span>✓ Word 图片<b>内嵌无外链</b></span>
+      </footer>
     </section>
   </main>
 
-  <script src="/app.js?v=20260602-baota-temp-api"></script>
+  <script src="/app.js?v=20260611-steps"></script>
 </body>
 </html>
